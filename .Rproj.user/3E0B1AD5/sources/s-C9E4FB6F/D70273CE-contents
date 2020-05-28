@@ -1,0 +1,892 @@
+---
+title: "Effective Data Visualization"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+# import libraries
+library(learnr)
+library(tidyverse)
+
+# set global chunk options
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+# import datasets
+world_vaccination <- readr::read_csv("data/world_vaccination.csv")
+fast_food <- readr::read_csv("data/fast_food.csv")
+
+# world vaccination setup
+polio <- world_vaccination %>% 
+  filter(vaccine == "polio")
+
+polio_regions_line <- polio %>% 
+  ggplot(aes(x = year, y = pct_vaccinated)) +
+  geom_line(aes(colour = who_region)) +
+  labs(x = "Year",
+       y = "Percent of people vaccinated")
+
+# fast food setup
+top_restaurants <- fast_food %>% 
+  filter(state %in% c("CA", "WA", "OR")) %>% 
+  group_by(name) %>% 
+  summarise(n = n()) %>% 
+  top_n(9, wt = n) %>% 
+  arrange(desc(n))
+
+count_bar_chart <- top_restaurants %>% 
+  ggplot(aes(x = name, y = n)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Restaurant",
+       y = "Number of branches on the west coast")
+
+state_counts <- fast_food %>% 
+  semi_join(top_restaurants) %>% 
+  filter(state %in% c("CA", "WA", "OR")) %>% 
+  group_by(state) %>% 
+  summarise(n = n())
+
+top_n_state <- fast_food %>% 
+  semi_join(top_restaurants) %>%
+  filter(state %in% c("CA", "WA", "OR")) %>% 
+  group_by(name, state) %>% 
+  summarise(n = n())
+```
+
+## About
+
+This worksheet was adapted from the fourth lecture in [DSCI 100](https://ubc-dsci.github.io/dsci-100/), an introductory data science course for undergraduate students offered at The University of British Columbia.
+
+
+### Learning Objectives
+
+The goal of this worksheet is to expand your data visualization knowledge and tool set. We will learn effective ways to visualize data, as well as some general rules of thumb to follow when creating visualizations. All visualization tasks in this tutorial will be applied to two datasets of widespread interest.
+
+After completing this worksheet you will be able to:
+
+- Describe when to use the following kinds of visualizations to answer specific questions using a dataset:
+    - scatter plots
+    - line plots
+    - bar plots
+    - histograms
+- Given a dataset and a question, select from the above plot types and use `R` to create a visualization that best answers the question
+- Given a visualization and a question, evaluate the effectiveness of the visualization and suggest improvements to better answer the question
+- Interpret the visualization in the context of the research question
+- Referring to the visualization, communicate the conclusions in nontechnical terms
+- Use the `ggplot2` library in `R` to create and refine the above visualizations 
+
+
+
+###  Prerequisite Knowledge
+
+This worksheet accompanies the material in [Chapter 4](https://ubc-dsci.github.io/introduction-to-datascience/viz.html) of *Introduction to Data Science*, an online textbook which covers introductory data science topics. You should read that chapter (as well as the preceding ones) before attempting the worksheet, or at least check that you know the material in Chapters 1 through 4.
+
+Specifically, you should be familiar with the `dplyr` package in `R` and, particularly, with the following topics covered in [Chapter 3](https://ubc-dsci.github.io/introduction-to-datascience/wrangling.html) of *Introduction to Data Science*:
+
+- The pipe ` %>% `
+- The functions `mutate`, `filter`, `group_by`, `summarise`, `top_n`, and `arrange`
+- How to use different `_join` functions
+
+You should also have some knowledge of the `ggplot2` package. Specifically:
+
+- What aesthetics, geometries, and scales are in `ggplot2`
+- How to add new layers to a ggplot object
+
+Finally, you should also have a working knowledge of the plots listed in the first learning objective and to what data type they can be applied. (E.g. you should know what a scatter plot is and also that two quantitative variables are required to produce one.)
+
+
+
+```{r q0_1-0_4}
+quiz(
+  question("Which items below are aesthetics of ggplot2?  Check all that apply.",
+           answer("colour", correct = TRUE),
+           answer("scale"),
+           answer("x", correct = TRUE),
+           answer("fill", correct = TRUE),
+           answer("type")
+           ),
+  question("When deciding on the size of your visualization it is recommended that you:",
+           answer("Only make the plot area (where the dots, lines, bars are) as big as needed", correct = TRUE),
+           answer("Make it as big as your screen allows"),
+           answer("Use the default given by ggplot")
+           ),
+  question("What is the symbol used to add a new layer to a ggplot object?",
+           answer("<-"),
+           answer(" %>% "),
+           answer(" %&% "),
+           answer("+", correct = TRUE)
+           ),
+  question("Under what circumstance would you use a 3D plot?",
+           answer("When you have 3 variables whose relationship you wish to show"),
+           answer("When you want to emphasize the large difference between groups"),
+           answer("When you need to grab attention of your audience"),
+           answer("Rarely, we avoid 3D plots as we don't see well in 3D", correct = TRUE)
+           )
+)
+```
+
+
+
+## 1. World Vaccination Trends
+
+```{r world_vacc-setup, echo=FALSE}
+polio <- world_vaccination %>% 
+  filter(vaccine == "polio")
+
+polio_regions_line <- polio %>% 
+  ggplot(aes(x = year, y = pct_vaccinated)) +
+  geom_line(aes(colour = who_region)) +
+  labs(x = "Year",
+       y = "Percent of people vaccinated")
+```
+
+
+Data scientists find work in all sectors of the economy and all types of organizations. Some work in collaboration with public sector organizations to solve problems that affect society, both at local and global scales. Today we will be looking at a global problem with annual data from 1980 to 2017 from the [World Health Organization](https://www.who.int/) (WHO). According to WHO, polio is a disease that affects mostly children younger than 5 years old, and to date there is no cure. However, when given a vaccine, children can develop sufficient antibodies in their system to be immune to the disease. Another disease, Hepatitis B, is also known to affect infants but in a chronic manner. There is also a vaccine for Hepatitis B available. 
+
+
+The columns in the dataset we are going to be working with are:
+
+- `who_region` - The WHO region of the world
+- `year` - The year
+- `pct_vaccinated` - Estimated percentage of people currently in the region who had received a vaccination in that year or earlier (either a polio or Hepatitis B vaccine or both)
+- `vaccine` - Whether it's the `polio` or the `hepatitis_b` vaccine
+
+We want to know three things. First, has there been a change in polio or Hepatitis B vaccination patterns throughout the years? And if so, what is that pattern? Second, have the vaccination patterns for one of these diseases changed more than the other? Third, has there been any difference in polio or Hepatitis B vaccination patterns across different world regions? **The goal for today is to answer these questions by determining, creating, and studying appropriate data visualization displays.** To do this, you will follow the steps outlined below.
+
+The original datasets are available here:
+
+   - Polio: [http://apps.who.int/gho/data/view.main.81605?lang=en](http://apps.who.int/gho/data/view.main.81605?lang=en)
+   - Hepatitis B: [http://apps.who.int/gho/data/view.main.81300?lang=en](http://apps.who.int/gho/data/view.main.81300?lang=en)
+   
+These datasets were reshaped and merged into a single dataset, with which we will be working today. It has already been stored in the `world_vaccination` object in `R`. 
+
+Now we can start our analysis. Before starting to create plots, however, we should think about what type of display would be useful in this situation. People sometimes find it difficult to find an adequate plot. It can be hard to do so, but it is important!
+
+Recall that we are interested in studying polio and Hepatitis B vaccination trends throughout time and across world regions. Consider the following two displays:
+
+
+```{r good_plot, echo=FALSE}
+world_vaccination <- world_vaccination %>%
+  filter(!is.na(pct_vaccinated), who_region != "(WHO) Global")
+
+vertical_world <- world_vaccination %>% 
+  ggplot(aes(x = year, y = pct_vaccinated)) +
+  geom_line(aes(colour = who_region)) +
+  labs(x = "Year",
+       y = "Percent of people vaccinated",
+       colour = "Region of the world",
+       tag = "(a)") +
+  facet_grid(vaccine ~ .)
+vertical_world
+#grid.arrange(vertical_world, bad_histogram, ncol = 1)
+```
+
+
+```{r bad_plot, echo=FALSE}
+bad_histogram <- world_vaccination %>% 
+  ggplot(aes(x = pct_vaccinated)) +
+  geom_bar(aes(colour= vaccine, fill = vaccine),
+           alpha = 0.75) +
+  facet_wrap(.~ who_region) +
+  labs(x = "Percent of people vaccinated",
+       y = "Count",
+       colour = "Vaccine",
+       fill = "Vaccine",
+       tag = "(b)")
+bad_histogram
+```
+
+
+
+```{r q1_0_1}
+quiz(
+  question("From the plots above, which one is more useful for answering our questions?",
+           answer("Plot (a)", correct = TRUE),
+           answer("Plot (b)"),
+           answer("Both plots work well")
+  ),
+  question("Why is this the case?",
+           answer("Because plot (a) does not include time"),
+           answer("Because plot (b) does not include time", correct = TRUE),
+           answer("Because plot (b) should use percents, not counts, on the y-axis"),
+           answer("Because both plots complement each other")
+  ),
+  question("How could you improve plot (a)? Select ALL that apply",
+           answer("Using a color palette that is easier to read", correct = TRUE),
+           answer("Changing the label from hepatitis_b to Hepatitis B", correct = TRUE),
+           answer("Positioning the legend at the bottom or top so that it doesn't take that much space from the plot", correct = TRUE),
+           answer("Plot (a) cannot be improved")
+  )
+)
+```
+
+In order to answer today's questions, we will produce a plot of the estimated percentage of people vaccinated per year and world region. We will start with a simple plot and build on it to produce a plot similar to plot (a) above.
+
+
+**Question 1.1** 
+
+Before starting creating plots, we have to reshape the data by removing rows that have NA's or values that we are not interested in. When you want to filter for rows that aren't equal to something, you can use the `!=` operator in `R`. For example, to remove all the cars with 6 cylinders from the `mtcars` built-in `R` dataset we would do the following: 
+
+
+```{r filter_example, echo=TRUE, warning=FALSE, eval=TRUE}
+head(mtcars)
+filter(mtcars, cyl != 6)  %>% 
+head()
+```
+
+Filter the `world_vaccination` dataset so that we don't have any NA's in the `pct_vaccinated` column. This can be achieved using the `is.na` function in `R`, which detects which rows are NA. We also want to filter out the `(WHO) Global` region as it is just the average of the other regions. Fill in the `...` in the code below. *Assign your filtered data to the same object called `world_vaccination`.*
+
+```{r q1_1_1, exercise=TRUE, exercise.lines = 3, exercise.setup = "world_vacc-setup"}
+world_vaccination <- world_vaccination %>%
+filter(!is.na(...), ... != "(WHO) Global")
+head(world_vaccination)
+```
+
+
+
+```{r q1_1_2}
+quiz(
+  question("Consider the columns/variables `year` and `pct_vaccinated`. Are they:",
+    answer("both quantitative (e.g., numerical)", correct = TRUE),
+    answer("both categorical"),
+    answer("one is categorical and one is quantitative"),
+    answer("None of the above")
+  )
+)
+```
+
+**Question 1.2** 
+
+Create a scatter plot of the percentage of people vaccinated (y-axis) against year (x-axis) for all the regions in `world_vaccination`. Make sure to label your axes with human readable labels. Ignore all other variables.
+
+*Assign your plot to an object called `world_vacc_plot` and print it afterwards*
+
+
+```{r q1_2, exercise = TRUE, exercise.lines = 6, exercise.setup = "world_vacc-setup"}
+world_vacc_plot <- world_vaccination %>% 
+  ggplot(...) +
+  geom_...() +
+  labs(... = ...,
+       ... = ...)
+world_vacc_plot
+```
+
+
+
+
+**Question 1.3**
+
+Now that we see how the percentage of people vaccinated varies over time, we should start to look for any differences between the percentage vaccinated for polio and the percentage vaccinated for Hepatitis B.
+
+Using different colours to differentiate between groups is a good option. However, when there aren't many groups between which we want to differentiate, different shapes combined with different colours are also useful. This is also relevant to account for people who are colour blind, or when your work will be printed in grayscale.
+
+```{r q1_3}
+quiz(
+  question("Considering that we want to compare between two groups, what should we do next to compare the differences (if they exist) most effectively?",
+    answer("Filter the data by the type of vaccine and make two separate plots"),
+    answer("Colour the data by the type of vaccine"),
+    answer("Have a different shaped dot/point for each type of vaccine"),
+    answer("Colour the data by the type of vaccine, and have a different shaped dot/point for each type of vaccine", correct = TRUE)
+  )
+)
+```
+
+`ggplot2` also has alternative colour palettes for colourblindness, such as the [viridis palette](https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html). We will not learn how to use them in this activity, but if you are interested be sure to check it out!
+
+
+**Question 1.4**
+
+Now that we know how we will separate the data for our visualization, let's do it. Start by copying your code from question 1.2. Next, add an `aes` function inside of the `geom_point` function to map `vaccine` to colour and shape. Your `geom_point` function and layer should look something like this: 
+
+```{r echo=TRUE, eval=FALSE}
+geom_point(aes(colour = ..., shape = ...))  +
+```
+
+Finally, make sure you change *all* the axes and legends so that they have nicely formatted, human-readable labels. To do this, we will remove the `xlab` and `ylab` label functions and just use the more general `labs` function, specifying all the aesthetics we want to label:
+
+```{r echo=TRUE, eval=FALSE}
+labs(x = "...", y = "...", colour = "...", shape = "...")
+```
+
+Fill in the `...` in the cell below. 
+
+*Assign your answer to an object called `compare_vacc_plot`.*
+
+
+```{r q1_4, exercise=TRUE, exercise.lines = 8, exercise.setup = "world_vacc-setup"}
+compare_vacc_plot <- ... %>% 
+  ggplot(aes(...)) +
+  geom_point(aes(colour = ..., shape = ...)) +
+  labs(x = ...,
+       y = ...,
+       colour = ...,
+       shape = ...)
+compare_vacc_plot
+```
+
+We can see that in some segments of the data, polio vaccinations were fairly common in 1980---although we can't see it in this plot, we can infer that this is because in some regions of the world polio vaccinations were already well underway in 1980, while in other regions they were not. In contrast, vaccinations against Hepatitis B didn't start until around 1990.  We see that, for some segments of the polio data, the rate of increase in percentage vaccinated appears to be similar to the rate for Hepatitis B vaccinations.   Currently, the percentage vaccinated for polio is about the same as the percentage vaccinated for Hepatitis B, just occurring 10 years earlier. However, there is some other variation in the data. Perhaps that could be attributed to region? Let's create some more visualizations to see if that is indeed the case.
+
+To get started, let's focus on the polio vaccine data and, after that, we'll look at both vaccines together.
+
+**Question 1.5**
+
+Create a data frame object named `polio` that contains only the rows where the `vaccine` is `"polio"`:
+
+
+```{r q1_5, exercise=TRUE, exercise.lines=3, exercise.setup = "world_vacc-setup"}
+polio <- ---
+
+head(polio)
+```
+
+
+
+**Question 1.6**
+
+Now create a scatter plot using the `polio` data where percentage vaccinated is on the y-axis, year is on the x-axis, and each group has a different coloured point and a different shape. Name it `polio_regions`. 
+
+Fill in the `...` in the cell below. 
+
+```{r q1_6, exercise=TRUE, exercise.lines = 6, exercise.setup = "world_vacc-setup"}
+polio_regions <- polio %>% 
+  ggplot(aes(x = ..., y = ...)) +
+  geom_point(aes(colour = ..., shape = ...)) +
+  labs(x = "...",
+       y = "...")
+polio_regions
+```
+
+
+**Question 1.7.1**
+
+
+When we have multiple groups it’s easier for us to see the differences when we change point colour and shape. However, at some point there are too many groups to keep things straight. We are approaching that on the plot above, and so we need to do something different. One thing we could try is to change the point to a line to reduce the noise/chaos of the plot above. We would also not have a shape. Do that in the cell below and name the plot object `polio_regions_line`.
+
+
+
+```{r q1_7_1, echo=TRUE, exercise=TRUE, exercise.lines = 6, exercise.setup = "world_vacc-setup"}
+
+
+
+
+
+polio_regions_line
+```
+
+
+**Question 1.7.2**
+
+One thing that is still not ideal in the visualization above is the legend title "who_region" -- it is not very readable. Let's add another layer to `polio_regions_line` to change that. To do this we use the `labs` function and choose the aesthetic mapping (here `colour`) that we want to apply the legend title to. Also, given that we created an object from our previous plot, we do not need to retype all our code, but instead can just say:
+
+```{r, echo = TRUE, eval = FALSE}
+[your plot object] <- [your plot object] +
+                        [new layer code]
+```
+
+Fill in the `...` in the cell below. 
+
+```{r q1_7_2, exercise=TRUE, exercise.lines = 3, exercise.setup = "world_vacc-setup"}
+polio_regions_line <- polio_regions_line +
+    labs(... = "Region of the world")
+polio_regions_line
+```
+
+
+**Question 1.8**
+
+
+```{r q1_8_0}
+quiz(
+  question("Now that we know how to effectively plot the percentage vaccinated against polio over time for each region, how might we most effectively compare this to the same display but for Hepatitis B?",
+    answer("Combine both plots into a single plot by using different linetypes for each disease."),
+    answer("Combine both plots into a single plot by using more colours for Hepatitis B"),
+    answer("Arrange both plots either vertically or side-by-side.", correct = TRUE)
+  )
+)
+```
+
+
+In this case we would like two side-by-side or two vertically arranged plots. If that data are in the same data frame (as ours were in the `world_vaccination` data frame) then we can use a technique called facetting to do this.
+
+There are two facetting functions in `R`, but the one we will see here is `facet_grid`. The basic syntax for this `ggplot` layer is the following:
+
+```{r, echo = TRUE, eval = FALSE}
+# creates side by side plots for each member of the category in COLUMN_X
+facet_grid(. ~ COLUMN_X)
+```
+
+or 
+
+```{r, echo = TRUE, eval = FALSE}
+# creates vertically arranged plots for each member of the category in COLUMN_X
+facet_grid(COLUMN_X ~ .)
+```
+
+Create a plot like the one named `polio_regions_line` but instead of using the `polio` data frame, use the `world_vaccination` data frame, and facet on the column `vaccine` so that the two plots are side-by-side. Name this plot object `side_by_side_world`.
+
+Fill in the `...` in the cell below. 
+
+```{r q1_8, exercise=TRUE, exercise.lines = 8, exercise.setup = "world_vacc-setup"}
+side_by_side_world <- ... %>% 
+    ggplot(...) +
+    geom_...(...) +
+    labs(...) +
+    xlab(...) + 
+    ylab(...) +
+    facet_grid(...)
+side_by_side_world
+```
+
+
+
+**Question 1.9.1**
+
+Now use `facet_grid` to arrange the same two plots vertically. Name this plot `vertical_world`.
+
+
+```{r q1_9_1, exercise=TRUE, exercise.lines = 8, exercise.setup = "world_vacc-setup"}
+
+
+
+
+
+
+
+vertical_world
+```
+
+
+
+Which arrangement is better? Depends on what you are asking! If you are interested in comparing the rate at which things changed over time, then the vertical arrangement is more effective. However, if you are interested in comparing the exact percentage values between the lines at certain points then the side-by-side arrangement is more effective.
+
+**Question 1.9.2**
+
+
+
+```{r q1_9_2}
+quiz(
+  question("Which WHO region had the greatest progress in the shortest period of time in both Hepatitis B and in polio (using the data we plotted above)?",
+    answer("Americas"),
+    answer("Eastern Mediterranean"),
+    answer("Europe"),
+    answer("Western Pacific", correct = TRUE)
+  )
+)
+```
+
+
+
+
+
+## 2. Fast Food Chains in the USA
+
+```{r fast_food-setup, echo=FALSE, warning=FALSE, message=FALSE}
+top_restaurants <- fast_food %>% 
+  filter(state %in% c("CA", "WA", "OR")) %>% 
+  group_by(name) %>% 
+  summarise(n = n()) %>% 
+  top_n(9, wt = n) %>% 
+  arrange(desc(n))
+
+count_bar_chart <- top_restaurants %>% 
+  ggplot(aes(x = name, y = n)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Restaurant",
+       y = "Number of branches on the west coast")
+
+state_counts <- fast_food %>% 
+  semi_join(top_restaurants) %>% 
+  filter(state %in% c("CA", "WA", "OR")) %>% 
+  group_by(state) %>% 
+  summarise(n = n())
+
+top_n_state <- fast_food %>% 
+  semi_join(top_restaurants) %>%
+  filter(state %in% c("CA", "WA", "OR")) %>% 
+  group_by(name, state) %>% 
+  summarise(n = n())
+```
+
+
+
+With their cheap meals and convenient drive-thrus, fast food restaurants are a growing demand in many countries. Despite their questionable ingredients and nutritional value, most Americans count on fast food in their daily lives (they are often delicious and so hard to resist...). 
+
+
+<img src="https://media.giphy.com/media/NS6SKs3Lt8cPHhe0es/giphy.gif" width = "400"/>
+
+Source: https://media.giphy.com/media/NS6SKs3Lt8cPHhe0es/giphy.gif
+
+
+According to Wikipedia,
+
+>  Fast food was originally created as a commercial strategy to accommodate the larger numbers of busy commuters, travelers and wage workers who often didn't have the time to sit down at a public house or diner and wait the normal way for their food to be cooked. By making speed of service the priority, this ensured that customers with strictly limited time (a commuter stopping to procure dinner to bring home to their family, for example, or an hourly laborer on a short lunch break) were not inconvenienced by waiting for their food to be cooked on-the-spot (as is expected from a traditional "sit down" restaurant). For those with no time to spare, fast food became a multi-billion dollar industry.
+
+Currently, fast food is very popular and lots of businesses are investing in advertisement as well as new ideas to make their chain stand out in the sea of restaurants. In fact, a business wishing to buy a franchise location in an existing chain is hiring you as a consultant. They want to know the current market situation to set up a franchise in a state on the west coast of the United States (California, Oregon, or Washington) with few fast food restaurants. Particularly, they would like to set up a franchise that is consistently popular on the west coast, but in a state which has few fast food restaurants.
+
+In this assignment, you will pretend to assist in the opening of this new restaurant. Your goal is to figure out which chain to recommend and which state would be the least competitive (as measured by having fewer fast food restaurants). In order to do this, you will have to answer three questions:
+
+1) Which is the most prevalent franchise on the west coast of the US? 
+
+2) Is the most prevalent franchise consistent across the west coast?
+
+3) Which state on the west coast has the smallest number of fast food restaurants?
+
+
+
+
+**Question 2.1**
+
+
+```{r q2_1}
+quiz(
+  question("From the list below, what are you NOT trying to determine?",
+    answer("The west coast franchise that is the most prevalent"),
+    answer("The least prevalent franchise consistent across the west coast", correct = TRUE),
+    answer("The state on the west coast with the smallest number of fast food restaurants")
+  )
+)
+```
+
+
+
+**Question 2.2**
+
+The dataset is stored in an `R` object called `fast_food`. Print the first ten rows of this dataset.
+
+
+```{r q2_2_1, exercise = TRUE}
+
+```
+
+
+
+```{r q2_2_2}
+quiz(
+  question("How many McDonald's restaurants in NY occur in the first 10 rows?",
+           answer("0"),
+           answer("1"),
+           answer("2", correct = TRUE),
+           answer("3")
+  ),
+  question("What does each row in the dataset represent?",
+           answer("The number of branches from a given franchise and state"),
+           answer("A unique branch of a given franchise in a given state", correct = TRUE),
+           answer("An indicator of whether a given franchise is present in a given state")
+  )
+)
+```
+
+
+### Answering question 1: Which is the most prevalent franchise on the west coast of the US?
+
+
+**Question 2.3** 
+
+Next, find the top 9 restaurants (in terms of number of locations) on the west coast (in the states "CA", "WA" or "OR") and name them `top_restaurants`
+
+Fill in the `...` in the cell below. 
+
+*Assign your answer to an object called `top_restaurants`.*
+
+
+```{r q2_3, exercise=TRUE, exercise.lines=7, exercise.setup = "fast_food-setup"}
+top_restaurants <- fast_food %>%
+    filter(state %in% c("CA", "WA", "OR")) %>% 
+    group_by(...) %>%
+    ...(n = n()) %>%
+    ...(...) %>% 
+    ...(...)
+top_restaurants
+```
+
+
+**Question 2.4**
+
+Now we can answer the first question we are interested in just by looking at the table!
+
+```{r q2_4}
+quiz(
+  question("Which is the most popular franchise on the west coast?",
+    answer("Burger King"),
+    answer("Taco Bell"),
+    answer("McDonald's", correct = TRUE),
+    answer("Jack in the Box")
+  )
+)
+```
+
+
+
+**Question 2.5** 
+
+Even though we can use the table to answer the question, remember you are going to present your results to the businesspeople who hired you. A table is not always the clearest way of showing information (although sometimes it might be, as we will see later in the activity). In our case a bar plot could be more helpful, so let's create one!
+
+Plot the counts for the top 9 fast food restaurants on the west coast as a bar chart using `geom_bar`. The number of restaurants should be on the y-axis and the restaurant names should be on the x-axis. Because we are not counting up the number of rows in our data frame, but instead are plotting the actual values in the `n` column, we need to use the `stat = "identity"` argument inside `geom_bar`.
+
+To do this fill in the `...` in the cell below. Make sure to label your axes. *Assign your answer to an object called `count_bar_chart`.*
+
+
+```{r q2_5, exercise=TRUE, exercise.lines=6, exercise.setup = "fast_food-setup"}
+count_bar_chart <- ... %>% 
+  ggplot(aes(x = ..., y = ...)) + 
+  geom_bar(...) +
+  xlab(...) +
+  ylab(...)
+count_bar_chart
+```
+
+
+
+**Question 2.6**
+
+The x-axis labels don't look great unless you make the bars on the bar plot above quite wide, wider than is actually useful or effective. What can we do? There are two good solutions to this problem.
+
+**Part A:** We can add a `theme` layer and rotate the labels. Choose an angle that you think is appropriate. Choose something between 20 degrees and 90  degrees for the `angle` argument. Use the `hjust = 1` argument to ensure your labels don't sit on top of the bars as you rotate them (try removing that argument and see what happens!).
+
+
+*Name the resulting plot count_bar_chart_A.*
+
+**Part B:** We can also simply use horizontal bars. Use the `coord_flip` function to achieve this effect.
+
+*Name the resulting plot count_bar_chart_B.*
+
+
+
+```{r q2_6A, exercise=TRUE, exercise.lines=4, exercise.setup = "fast_food-setup"}
+#PART A
+count_bar_chart_A <- ... + 
+    theme(axis.text.x = element_text(angle = ..., hjust = 1))
+count_bar_chart_A
+```
+
+
+```{r q2_6B, exercise=TRUE, exercise.lines=4, exercise.setup = "fast_food-setup"}
+#PART B
+count_bar_chart_B <- ... + 
+    coord_flip()
+count_bar_chart_B
+```
+
+**Part C:** Plot B seems to work better, but it would be great to have the bars ordered by size (that is, by restaurant count). This can be easily done in `ggplot2` by reordering the `name` variable by `n`, like so:
+
+```{r reorder_example, echo=TRUE, warning=FALSE, eval=FALSE}
+ggplot(aes(x = reorder(name, n), y = n))
+```
+
+Now copy your code from question 2.5 and reorder the `name` variable as above. Don't forget to add `coord_flip` at the end as well. 
+
+*Name the resulting plot count_bar_chart_C.*
+
+```{r q2_6C, exercise=TRUE, exercise.lines=7, exercise.setup = "fast_food-setup"}
+count_bar_chart_C <- top_restaurants %>% 
+  ggplot(aes(x = reorder(..., ...), y = ...)) +
+  geom_bar(...) +
+  xlab(...) +
+  ylab(...) +
+  coord_flip()
+count_bar_chart_C
+```
+
+
+
+### Answering question 2: Is the most dominant franchise consistent across the west coast?
+
+**Question 2.7**
+
+
+To answer the second question we need a data frame that has three columns: `name` (restaurant), `state`, and `n` (restaurant count). You will need to use `semi_join` to get the intersection of two data frames. In this case, you will use `semi_join` to use the names in `top_restaurants` to get the counts of each restaurant in each of the 3 states from the `fast_food` data frame. You will also need to `group_by` both `name` and `state`. Name this new data frame `top_n_state`.
+ 
+ *If you are interested in learning more about joining data frames in R, see [this cheatsheet](https://stat545.com/bit001_dplyr-cheatsheet.html).*
+
+
+```{r q2_7, exercise=TRUE, exercise.lines=6, exercise.setup = "fast_food-setup"}
+... <- fast_food %>%
+    semi_join(top_restaurants) %>% # semi_join gives the intersection of two data frames
+    filter(state %in% c("CA", "WA", "OR")) %>% 
+    ...(..., ...) %>%
+    ...(...) 
+top_n_state
+```
+
+
+As you can see, the resulting data frame has only 27 rows. We could try to obtain the answer to the question just by looking at the table (just as in question 2.4). However, even though the number of rows is not large, studying the table turns out to be a painstaking task. In fact, that's what the previous consultant told the business owners to do... before being fired for it! Let's make a display that summarises all the information in a single plot.
+
+
+**Question 2.8** 
+
+Plot the counts (y-axis) for the top 9 fast food restaurants (x-axis) on the west coast, **per US State** (group), as a bar chart using `geom_bar`. Use `fill = name` inside `aes` to colour the restaurants by name. Use `position = "dodge"` inside `geom_bar` to group the bars by state. To rename the legend, use a `labs` layer. This time within `labs` use the `fill` argument instead of colour (this is because you need to modify the aesthetic that the legend was made from, here it was fill, not colour as earlier in the worksheet).
+
+To do this fill in the `...` in the cell below. Make sure to label your axes.
+
+*Assign your answer to an object called `top_n_state_plot`.*
+
+
+```{r q2_8, exercise=TRUE, exercise.lines=7, exercise.setup = "fast_food-setup"}
+top_n_state_plot <- ... %>%
+  ggplot(aes(x = state, y = n, fill = ...)) + 
+  ...(stat = ..., position = "...") +
+  xlab(...) +
+  ylab(...) +
+  labs(fill = "Restaurant") 
+top_n_state_plot
+```
+
+
+How easy is that for comparing the restaurants and states to answer our question: Is the most dominant/top franchise consistent across the west coast? If we carefully look at this plot we can  answer this question, but it takes us a while to process this. If we instead visualize this as a stacked bar chart using proportions instead of counts we *might* be able to do this more easily (making it a more effective visualization).
+
+
+**Question 2.9** 
+
+Copy your code from Question 2.9.2 and modify `position = "dodge"` to `position = "fill"` to change from doing a grouped bar chart to a stacked bar chart with the data represented as proportions instead of counts.
+
+
+```{r q2_9, exercise=TRUE, exercise.lines=7, exercise.setup = "fast_food-setup"}
+top_n_state_plot <- ...
+
+
+
+
+
+top_n_state_plot
+```
+
+
+
+**Question 2.10**
+
+With this, we are ready to answer the second question.
+
+
+```{r q2_10_1}
+quiz(
+  question("Is the most dominant franchise consistent across the west coast?",
+    answer("Yes", correct = TRUE),
+    answer("No")
+  )
+)
+```
+
+Even though we were able to answer the question, the stacked bar chart still seems to be noisy.
+
+
+```{r q2_10_2}
+quiz(
+  question("How can the stacked bar chart be improved?",
+           answer("By including the number of branches of every franchise and state on the plot"),
+           answer("By removing the restaurant legend"),
+           answer("By changing the colour palette", correct = TRUE)
+  )
+)
+```
+
+
+
+
+### Answering question 3: Which state on the west coast has the smallest number of fast food restaurants?
+
+
+**Question 2.11**
+
+Finally, let's find which state on the west coast has the greatest number of fast food restaurants. We will need to use the `semi_join` strategy, as we did above, to use the names in `top_restaurants` to get the counts of each restaurant in each of the 3 states from the `fast_food` data frame. Name this data frame `state_counts`. Fill in the `...` in the cell below.
+
+
+```{r q2_11, exercise=TRUE, exercise.lines=6, exercise.setup = "fast_food-setup"}
+... <- fast_food %>%
+    semi_join(top_restaurants) %>% # semi_join gives the intersection of two data frames
+    filter(state %in% c("CA", "WA", "OR")) %>% 
+    ...(...) %>%
+    ...(n = n()) 
+state_counts
+```
+
+
+
+**Question 2.12**
+
+Now, create a bar plot that has restaurant count on the y-axis and US state on the x-axis. Name the plot `state_counts_plot`. 
+
+
+```{r q2_12, exercise=TRUE, exercise.lines=6, exercise.setup = "fast_food-setup"}
+state_counts_plot <- ...
+
+
+
+
+state_counts_plot
+```
+
+
+**Question 2.13.1**
+
+Great! Now we can answer the last question we are interested in.
+
+```{r q2_13_1}
+quiz(
+  question("Which state (CA, OR, WA) has the least number of fast food restaurants?",
+    answer("CA"),
+    answer("OR", correct = TRUE),
+    answer("WA")
+  )
+)
+```
+
+
+Observe that we could again have answered the question only by viewing the table, which only has three rows. Do you believe that in this case the plot we generated helps to summarise the information in the table? Is the table too large, as in question 2.7, or is it small enough that it can be presented to the final audience---the businesspeople---to answer the question? 
+
+**Question 2.13.2**
+
+You can also approach the third question from a different perspective. Consider the populations of California (39.512 million), Oregon (4.217 million) and Washington (7.615 million) (source: [2019 United States Census Bureau](https://www.census.gov/data/tables/time-series/demo/popest/2010s-state-total.html), visited on April 2020). Is the raw restaurant count for each state the best measure of competition? 
+
+Calculate the restaurant per capita for the states on the west coast by filling in the `...` in the code below.
+
+
+```{r q2_13_2, exercise=TRUE, exercise.lines=3, exercise.setup = "fast_food-setup"}
+state_counts$population <- c(39.512, 4.217, 7.615)
+state_counts %>%
+  mutate(n.per.capita = ... / ...)
+```
+
+You are encouraged to also make a plot like the one in question 2.12 to visualize this information.
+
+
+**Question 2.13.3**
+
+```{r q2_13_3}
+quiz(
+  question("Which state (CA, OR, WA) has the least number of fast food restaurants per capita?",
+    answer("CA", correct = TRUE),
+    answer("OR"),
+    answer("WA")
+  )
+)
+```
+
+
+### Final recommendation to client
+
+Now that we answered the research questions, it is good practice to think about what our final recommendation to the businesspeople will be. Recall that they wish to set up a restaurant from a consistently popular franchise in the least competitive west coast state (measured by number of restaurants).
+
+**Question 2.14**
+
+
+```{r final_recommendation}
+quiz(
+  question("Which franchise would you recommend the client to set up?",
+    answer("Burger King"),
+    answer("Taco Bell"),
+    answer("McDonald's", correct = TRUE),
+    answer("Jack in the Box")
+  ),
+    question("Based on questions 2.13.1 and 2.13.3, which states could you recommend the client to set up their restaurant on? Select ALL that apply.",
+    answer("CA", correct = TRUE),
+    answer("OR", correct = TRUE),
+    answer("WA")
+  )
+)
+```
+
+
+Finally, reflect on which of the visualizations we produced would better support your recommendation. How many plots would you include? Which ones? Why? Are some tables better than the corresponding plots at presenting the information?
+
+We are just scratching the surface of how to create effective visualizations in `R`. For example, we haven't covered how to change from the default colours palette `ggplot2` provides. To learn more, visit the links in the worksheet and practice, practice, practice! Go forth and make beautiful and effective plots!

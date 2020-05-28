@@ -1,0 +1,28 @@
+---
+output:
+html_document:
+    includes: 
+        in_header: measure.html
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(tidyverse)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r prepare-load_data}
+us_data <- read_csv("https://raw.githubusercontent.com/UBC-DSCI/introduction-to-datascience/master/state_property_vote.csv")
+write_csv(us_data, "state_property_vote.csv")
+```
+
+```{r load_data, exercise=TRUE, exercise.setup = "prepare-load_data"}
+library(tidyverse)
+read_csv("state_property_vote.csv")
+```
+
+<div data-iframe-height></div>
+
+Testing some text now...
+

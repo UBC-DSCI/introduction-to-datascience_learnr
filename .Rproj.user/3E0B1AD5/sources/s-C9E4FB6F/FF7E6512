@@ -1,0 +1,25 @@
+{
+    "id": "FF7E6512",
+    "path": "~/Documents/ubc-dsci/test/test.Rmd",
+    "project_path": "test.Rmd",
+    "type": "r_markdown",
+    "hash": "1997315169",
+    "contents": "",
+    "dirty": false,
+    "created": 1590614476608.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "cursorPosition": "27,0",
+        "scrollLine": "23",
+        "last_setup_crc32": "C9E4FB6F6adced63"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1590679044,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1590679044893,
+    "read_only": false,
+    "read_only_alternatives": []
+}

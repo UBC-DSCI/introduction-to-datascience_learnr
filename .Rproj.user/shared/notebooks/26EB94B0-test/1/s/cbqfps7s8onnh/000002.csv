@@ -1,0 +1,12 @@
+"0","library(tidyverse)"
+"0","read_csv(""state_property_vote.csv"")"
+"2","Parsed with column specification:
+cols(
+  state = [31mcol_character()[39m,
+  med_income = [32mcol_double()[39m,
+  med_prop_val = [32mcol_double()[39m,
+  population = [32mcol_double()[39m,
+  mean_commute_minutes = [32mcol_double()[39m,
+  party = [31mcol_character()[39m
+)
+"

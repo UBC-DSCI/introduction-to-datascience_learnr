@@ -1,0 +1,12 @@
+"0","d <- read_csv(""https://raw.githubusercontent.com/UBC-DSCI/introduction-to-datascience/master/state_property_vote.csv"")"
+"2","Parsed with column specification:
+cols(
+  state = [31mcol_character()[39m,
+  med_income = [32mcol_double()[39m,
+  med_prop_val = [32mcol_double()[39m,
+  population = [32mcol_double()[39m,
+  mean_commute_minutes = [32mcol_double()[39m,
+  party = [31mcol_character()[39m
+)
+"
+"0","write_csv(d, ""state_property_vote.csv"")"

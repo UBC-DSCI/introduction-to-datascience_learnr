@@ -1,0 +1,5 @@
+
+```{r select_data, exercise=TRUE, exercise.setup = "prepare-load_data"}
+state_column <- select(us_data, state)
+state_column
+```
